@@ -11,13 +11,20 @@ const LIMITS = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export async function onRequestPost(context) {
-  return handleContact(context.request, context.env);
-}
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
 
-export async function onRequest() {
-  return json({ error: "Method not allowed." }, 405);
-}
+    if (url.pathname === "/api/contact") {
+      if (request.method !== "POST") {
+        return json({ error: "Method not allowed." }, 405);
+      }
+      return handleContact(request, env);
+    }
+
+    return env.ASSETS.fetch(request);
+  },
+};
 
 async function handleContact(request, env) {
   let fields;
@@ -45,12 +52,7 @@ async function handleContact(request, env) {
   }
 
   try {
-    await sendMail(env, {
-      name,
-      email,
-      company,
-      message,
-    });
+    await sendMail(env, { name, email, company, message });
   } catch (err) {
     console.error("contact email failed", err);
     return json({ error: "Unable to send right now." }, 502);

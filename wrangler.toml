@@ -1,12 +1,11 @@
 name = "alyssawelt"
+main = "src/worker.js"
 compatibility_date = "2026-08-20"
-pages_build_output_dir = "."
 
-# Pages Function at /api/contact. No Worker route and no send_email binding.
-# Set these as encrypted environment variables on the Pages project:
-#   CF_ACCOUNT_ID
-#   CF_API_TOKEN   (Email Sending: Edit)
-# Verify alyssa@alyssawelt.com as an Email Routing destination address (free).
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
 
 [vars]
 TO_EMAIL = "alyassa@alyssawelt.com"

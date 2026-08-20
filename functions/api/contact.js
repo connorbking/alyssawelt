@@ -32,6 +32,11 @@ export async function onRequestPost(context) {
       return json({ error: "Please enter a valid email." }, 400);
     }
 
+    const apiKey = context.env.RESEND_API_KEY;
+    if (!apiKey) {
+      return json({ error: "Contact form is not configured yet." }, 503);
+    }
+
     const to = context.env.TO_EMAIL || TO_EMAIL;
     const fromEmail = context.env.FROM_EMAIL || FROM_EMAIL;
     const subject = `New Lead from ${name} (${company || "Independent"})`;
@@ -44,27 +49,28 @@ export async function onRequestPost(context) {
       message,
     ].join("\n");
 
-    const response = await fetch("https://api.mailchannels.net/tx/v1/send", {
+    const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
-        personalizations: [
-          {
-            to: [{ email: to, name: "Alyssa Welt" }],
-          },
-        ],
-        from: { email: fromEmail, name: FROM_NAME },
-        reply_to: { email, name },
+        from: `${FROM_NAME} <${fromEmail}>`,
+        to: [to],
+        reply_to: email,
         subject,
-        content: [
-          { type: "text/plain", value: text },
-        ],
+        text,
       }),
     });
 
     if (!response.ok) {
-      const detail = await response.text();
-      console.error("mailchannels failed", response.status, detail);
+      const body = await response.json().catch(() => ({}));
+      console.error("resend failed", response.status, body);
+      const detail = typeof body.message === "string" ? body.message : "";
+      if (detail.toLowerCase().includes("not verified")) {
+        return json({ error: "Sending domain is not verified in Resend yet." }, 502);
+      }
       return json({ error: "Unable to send right now. Please email alyssa@alyssawelt.com." }, 502);
     }
 

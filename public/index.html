@@ -257,11 +257,32 @@
   </footer>
 
   <dialog id="booking-dialog" class="booking-dialog" aria-labelledby="booking-title">
-    <div class="booking-dialog-head">
-      <h2 id="booking-title" class="font-serif text-xl font-semibold text-clinical-900">Book a free consultation</h2>
-      <button type="button" id="booking-close" class="text-sm font-semibold text-clinical-700 hover:text-clinical-900" aria-label="Close schedule">Close</button>
+    <div class="booking-dialog-panel">
+      <div class="booking-dialog-head">
+        <div class="flex min-w-0 items-center gap-3">
+          <img
+            src="/images/alyssa-welt.png"
+            alt=""
+            width="44"
+            height="44"
+            class="h-11 w-11 rounded-full object-cover object-top ring-2 ring-white"
+          />
+          <div class="min-w-0">
+            <p class="text-[0.65rem] font-semibold uppercase tracking-widest text-clinical-500">Free consultation</p>
+            <h2 id="booking-title" class="truncate font-serif text-xl font-semibold leading-tight text-clinical-900">Book a time with Alyssa</h2>
+          </div>
+        </div>
+        <button type="button" id="booking-close" class="booking-dialog-close" aria-label="Close schedule">
+          <span></span>
+          <span></span>
+        </button>
+      </div>
+      <iframe id="booking-frame" title="Appointment schedule with Alyssa Welt" loading="lazy"></iframe>
+      <div class="booking-dialog-foot">
+        <p class="text-sm leading-snug text-clinical-600">Pick an available time. You’ll get a calendar invite by email.</p>
+        <a href="https://calendar.app.google/EZC3ZvqTKL3owGE17" target="_blank" rel="noopener noreferrer" class="shrink-0 text-sm font-semibold text-clinical-800 underline decoration-clinical-200 underline-offset-4 hover:decoration-accent">Open in Google Calendar</a>
+      </div>
     </div>
-    <iframe id="booking-frame" title="Appointment schedule with Alyssa Welt" loading="lazy"></iframe>
   </dialog>
 
   <script>
@@ -308,6 +329,7 @@
         if (!bookingFrame.getAttribute("src")) bookingFrame.src = scheduleEmbed;
         if (typeof bookingDialog.showModal === "function") {
           bookingDialog.showModal();
+          document.body.style.overflow = "hidden";
         } else {
           window.open(e.currentTarget.href, "_blank", "noopener,noreferrer");
         }
@@ -319,6 +341,9 @@
       document.getElementById("booking-close").addEventListener("click", () => bookingDialog.close());
       bookingDialog.addEventListener("click", (e) => {
         if (e.target === bookingDialog) bookingDialog.close();
+      });
+      bookingDialog.addEventListener("close", () => {
+        document.body.style.overflow = "";
       });
 
       const showSuccess = () => {

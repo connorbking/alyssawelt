@@ -53,6 +53,9 @@ async function handleContact(request, env) {
     if (err instanceof ConfigError) {
       return json({ error: "Contact form is not configured yet." }, 503);
     }
+    if (err && err.message === "DOMAIN_NOT_VERIFIED") {
+      return json({ error: "Sending domain is not verified in Resend yet." }, 502);
+    }
     return json({ error: "Unable to send right now. Please try LinkedIn or email alyssa@alyssawelt.com." }, 502);
   }
 
@@ -99,6 +102,10 @@ async function sendViaResend(env, { name, email, company, message }) {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     console.error("resend api", response.status, body);
+    const detail = typeof body.message === "string" ? body.message : "";
+    if (detail.toLowerCase().includes("not verified") || detail.toLowerCase().includes("verify a domain")) {
+      throw new Error("DOMAIN_NOT_VERIFIED");
+    }
     throw new Error("Resend rejected the send");
   }
 }

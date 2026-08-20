@@ -1,6 +1,7 @@
 const TO_EMAIL = "alyssa@alyssawelt.com";
 const FROM_EMAIL = "no-reply@alyssawelt.com";
 const FROM_NAME = "Website Contact Form";
+const ACCOUNT_ID = "191b6a6ae524ccdd29763caa18587808";
 
 const LIMITS = {
   name: 120,
@@ -32,9 +33,12 @@ export async function onRequestPost(context) {
       return json({ error: "Please enter a valid email." }, 400);
     }
 
-    const apiKey = context.env.RESEND_API_KEY;
-    if (!apiKey) {
-      return json({ error: "Contact form is not configured yet." }, 503);
+    const token = context.env.CF_API_TOKEN;
+    const accountId = context.env.CF_ACCOUNT_ID || ACCOUNT_ID;
+
+    if (!token) {
+      console.error("CF_API_TOKEN is not set");
+      return json({ error: "Email is not configured." }, 500);
     }
 
     const to = context.env.TO_EMAIL || TO_EMAIL;
@@ -49,28 +53,27 @@ export async function onRequestPost(context) {
       message,
     ].join("\n");
 
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: `${FROM_NAME} <${fromEmail}>`,
-        to: [to],
-        reply_to: email,
-        subject,
-        text,
-      }),
-    });
-
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      console.error("resend failed", response.status, body);
-      const detail = typeof body.message === "string" ? body.message : "";
-      if (detail.toLowerCase().includes("not verified")) {
-        return json({ error: "Sending domain is not verified in Resend yet." }, 502);
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to,
+          from: { name: FROM_NAME, email: fromEmail },
+          headers: { "Reply-To": `${name} <${email}>` },
+          subject,
+          text,
+        }),
       }
+    );
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.success === false) {
+      console.error("cloudflare email send failed", response.status, payload);
       return json({ error: "Unable to send right now. Please email alyssa@alyssawelt.com." }, 502);
     }
 

@@ -3,5 +3,6 @@ compatibility_date = "2026-08-20"
 pages_build_output_dir = "./public"
 
 [vars]
+CF_ACCOUNT_ID = "191b6a6ae524ccdd29763caa18587808"
 TO_EMAIL = "alyssa@alyssawelt.com"
 FROM_EMAIL = "no-reply@alyssawelt.com"

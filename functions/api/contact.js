@@ -1,6 +1,8 @@
+import { EmailMessage } from "cloudflare:email";
+
 const TO_EMAIL = "alyssa@alyssawelt.com";
-const FROM_EMAIL = "noreply@alyssawelt.com";
-const FROM_NAME = "Alyssa Welt Website";
+const FROM_EMAIL = "no-reply@alyssawelt.com";
+const FROM_NAME = "Website Contact Form";
 
 const LIMITS = {
   name: 120,
@@ -11,135 +13,70 @@ const LIMITS = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-class ConfigError extends Error {}
-
 export async function onRequestPost(context) {
-  return handleContact(context.request, context.env);
+  try {
+    const fields = await readFields(context.request);
+
+    if (isBot(fields)) {
+      return json({ success: true });
+    }
+
+    const name = clean(fields.name, LIMITS.name);
+    const email = clean(fields.email, LIMITS.email).toLowerCase();
+    const company = clean(fields.company, LIMITS.company);
+    const message = String(fields.message || "").replace(/\r\n/g, "\n").trim().slice(0, LIMITS.message);
+
+    if (!name || !email || !message) {
+      return json({ error: "Missing required fields" }, 400);
+    }
+
+    if (!EMAIL_RE.test(email)) {
+      return json({ error: "Please enter a valid email." }, 400);
+    }
+
+    if (!context.env.EMAIL || typeof context.env.EMAIL.send !== "function") {
+      console.error("EMAIL binding is missing");
+      return json({ error: "Email binding is not configured." }, 500);
+    }
+
+    const to = context.env.TO_EMAIL || TO_EMAIL;
+    const fromEmail = context.env.FROM_EMAIL || FROM_EMAIL;
+    const subject = `New Lead from ${name} (${company || "Independent"})`;
+    const text = buildText({ name, email, company, message });
+    const html = buildHtml({ name, email, company, message });
+
+    try {
+      await context.env.EMAIL.send({
+        from: { email: fromEmail, name: FROM_NAME },
+        to,
+        replyTo: { name, email },
+        subject,
+        text,
+        html,
+      });
+    } catch (structuredErr) {
+      console.error("structured email send failed, using MIME", structuredErr);
+      const raw = buildRawMime({
+        fromEmail,
+        fromName: FROM_NAME,
+        to,
+        replyName: name,
+        replyEmail: email,
+        subject,
+        text,
+      });
+      await context.env.EMAIL.send(new EmailMessage(fromEmail, to, raw));
+    }
+
+    return json({ success: true, message: "Email sent successfully!" });
+  } catch (err) {
+    console.error("contact email failed", err);
+    return json({ error: "Unable to send right now. Please email alyssa@alyssawelt.com." }, 500);
+  }
 }
 
 export async function onRequest() {
   return json({ error: "Method not allowed." }, 405);
-}
-
-async function handleContact(request, env) {
-  let fields;
-  try {
-    fields = await readFields(request);
-  } catch {
-    return json({ error: "Invalid request." }, 400);
-  }
-
-  if (isBot(fields)) {
-    return json({ ok: true });
-  }
-
-  const name = clean(fields.name, LIMITS.name);
-  const email = clean(fields.email, LIMITS.email).toLowerCase();
-  const company = clean(fields.company, LIMITS.company);
-  const message = String(fields.message || "").replace(/\r\n/g, "\n").trim().slice(0, LIMITS.message);
-
-  if (!name || !email || !company || !message) {
-    return json({ error: "Please complete all fields." }, 400);
-  }
-
-  if (!EMAIL_RE.test(email)) {
-    return json({ error: "Please enter a valid email." }, 400);
-  }
-
-  try {
-    await sendMail(env, { name, email, company, message });
-  } catch (err) {
-    console.error("contact email failed", err);
-    if (err instanceof ConfigError) {
-      return json({ error: "Contact form is not configured yet." }, 503);
-    }
-    if (err && err.message === "DOMAIN_NOT_VERIFIED") {
-      return json({ error: "Sending domain is not verified in Resend yet." }, 502);
-    }
-    return json({ error: "Unable to send right now. Please try LinkedIn or email alyssa@alyssawelt.com." }, 502);
-  }
-
-  return json({ ok: true });
-}
-
-async function sendMail(env, payload) {
-  if (env.RESEND_API_KEY) {
-    await sendViaResend(env, payload);
-    return;
-  }
-
-  const token = env.CF_API_TOKEN || env.CLOUDFLARE_API_TOKEN || env.EMAIL_API_TOKEN;
-  const accountId = env.CF_ACCOUNT_ID;
-
-  if (token && accountId) {
-    await sendViaCloudflare(env, payload, { token, accountId });
-    return;
-  }
-
-  throw new ConfigError("Missing RESEND_API_KEY or CF_API_TOKEN");
-}
-
-async function sendViaResend(env, { name, email, company, message }) {
-  const to = env.TO_EMAIL || TO_EMAIL;
-  const fromEmail = env.FROM_EMAIL || FROM_EMAIL;
-
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: `${FROM_NAME} <${fromEmail}>`,
-      to: [to],
-      reply_to: email,
-      subject: `Website inquiry from ${name} (${company})`,
-      text: buildText({ name, email, company, message }),
-      html: buildHtml({ name, email, company, message }),
-    }),
-  });
-
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    console.error("resend api", response.status, body);
-    const detail = typeof body.message === "string" ? body.message : "";
-    if (detail.toLowerCase().includes("not verified") || detail.toLowerCase().includes("verify a domain")) {
-      throw new Error("DOMAIN_NOT_VERIFIED");
-    }
-    throw new Error("Resend rejected the send");
-  }
-}
-
-async function sendViaCloudflare(env, { name, email, company, message }, { token, accountId }) {
-  const to = env.TO_EMAIL || TO_EMAIL;
-  const fromEmail = env.FROM_EMAIL || FROM_EMAIL;
-
-  const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        to,
-        from: `${FROM_NAME} <${fromEmail}>`,
-        subject: `Website inquiry from ${name} (${company})`,
-        text: buildText({ name, email, company, message }),
-        html: buildHtml({ name, email, company, message }),
-        headers: {
-          "Reply-To": `${name} <${email}>`,
-        },
-      }),
-    }
-  );
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload.success === false) {
-    console.error("cloudflare email api", response.status, payload);
-    throw new Error("Cloudflare email API rejected the send");
-  }
 }
 
 async function readFields(request) {
@@ -167,6 +104,24 @@ function clean(value, max) {
     .slice(0, max);
 }
 
+function encodeHeader(value) {
+  return String(value).replace(/[\r\n]+/g, " ").trim();
+}
+
+function buildRawMime({ fromEmail, fromName, to, replyName, replyEmail, subject, text }) {
+  return [
+    `From: ${encodeHeader(fromName)} <${fromEmail}>`,
+    `To: ${to}`,
+    `Reply-To: ${encodeHeader(replyName)} <${replyEmail}>`,
+    `Subject: ${encodeHeader(subject)}`,
+    "MIME-Version: 1.0",
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    text,
+  ].join("\r\n");
+}
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -177,12 +132,11 @@ function escapeHtml(value) {
 
 function buildText({ name, email, company, message }) {
   return [
-    "New inquiry from alyssawelt.com",
-    "",
     `Name: ${name}`,
     `Email: ${email}`,
-    `Company: ${company}`,
+    `Company: ${company || "N/A"}`,
     "",
+    "Message:",
     message,
   ].join("\n");
 }
@@ -191,7 +145,7 @@ function buildHtml({ name, email, company, message }) {
   const rows = [
     ["Name", name],
     ["Email", email],
-    ["Company", company],
+    ["Company", company || "N/A"],
   ]
     .map(
       ([label, value]) =>

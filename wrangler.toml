@@ -2,7 +2,10 @@ name = "alyssawelt"
 compatibility_date = "2026-08-20"
 pages_build_output_dir = "./public"
 
+[[send_email]]
+name = "EMAIL"
+destination_address = "alyssa@alyssawelt.com"
+
 [vars]
-CF_ACCOUNT_ID = "191b6a6ae524ccdd29763caa18587808"
 TO_EMAIL = "alyssa@alyssawelt.com"
-FROM_EMAIL = "noreply@alyssawelt.com"
+FROM_EMAIL = "no-reply@alyssawelt.com"

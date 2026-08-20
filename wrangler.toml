@@ -2,10 +2,6 @@ name = "alyssawelt"
 compatibility_date = "2026-08-20"
 pages_build_output_dir = "./public"
 
-[[send_email]]
-name = "EMAIL"
-destination_address = "alyssa@alyssawelt.com"
-
 [vars]
 TO_EMAIL = "alyssa@alyssawelt.com"
 FROM_EMAIL = "no-reply@alyssawelt.com"

@@ -1,4 +1,4 @@
-const TO_EMAIL = "alyssa@alyssawelt.com";
+const TO_EMAIL = "welt.alyssa@gmail.com";
 const FROM_EMAIL = "no-reply@alyssawelt.com";
 const FROM_NAME = "Website Contact Form";
 const ACCOUNT_ID = "191b6a6ae524ccdd29763caa18587808";

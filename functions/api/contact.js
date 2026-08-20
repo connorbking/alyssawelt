@@ -11,6 +11,8 @@ const LIMITS = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+class ConfigError extends Error {}
+
 export async function onRequestPost(context) {
   return handleContact(context.request, context.env);
 }
@@ -48,20 +50,60 @@ async function handleContact(request, env) {
     await sendMail(env, { name, email, company, message });
   } catch (err) {
     console.error("contact email failed", err);
-    return json({ error: "Unable to send right now." }, 502);
+    if (err instanceof ConfigError) {
+      return json({ error: "Contact form is not configured yet." }, 503);
+    }
+    return json({ error: "Unable to send right now. Please try LinkedIn or email alyssa@alyssawelt.com." }, 502);
   }
 
   return json({ ok: true });
 }
 
-async function sendMail(env, { name, email, company, message }) {
-  const accountId = env.CF_ACCOUNT_ID;
-  const token = env.CF_API_TOKEN;
-
-  if (!accountId || !token) {
-    throw new Error("Missing CF_ACCOUNT_ID or CF_API_TOKEN");
+async function sendMail(env, payload) {
+  if (env.RESEND_API_KEY) {
+    await sendViaResend(env, payload);
+    return;
   }
 
+  const token = env.CF_API_TOKEN || env.CLOUDFLARE_API_TOKEN || env.EMAIL_API_TOKEN;
+  const accountId = env.CF_ACCOUNT_ID;
+
+  if (token && accountId) {
+    await sendViaCloudflare(env, payload, { token, accountId });
+    return;
+  }
+
+  throw new ConfigError("Missing RESEND_API_KEY or CF_API_TOKEN");
+}
+
+async function sendViaResend(env, { name, email, company, message }) {
+  const to = env.TO_EMAIL || TO_EMAIL;
+  const fromEmail = env.FROM_EMAIL || FROM_EMAIL;
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: `${FROM_NAME} <${fromEmail}>`,
+      to: [to],
+      reply_to: email,
+      subject: `Website inquiry from ${name} (${company})`,
+      text: buildText({ name, email, company, message }),
+      html: buildHtml({ name, email, company, message }),
+    }),
+  });
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    console.error("resend api", response.status, body);
+    throw new Error("Resend rejected the send");
+  }
+}
+
+async function sendViaCloudflare(env, { name, email, company, message }, { token, accountId }) {
   const to = env.TO_EMAIL || TO_EMAIL;
   const fromEmail = env.FROM_EMAIL || FROM_EMAIL;
 
@@ -75,20 +117,21 @@ async function sendMail(env, { name, email, company, message }) {
       },
       body: JSON.stringify({
         to,
-        from: { name: FROM_NAME, email: fromEmail },
-        replyTo: { name, email },
+        from: `${FROM_NAME} <${fromEmail}>`,
         subject: `Website inquiry from ${name} (${company})`,
         text: buildText({ name, email, company, message }),
         html: buildHtml({ name, email, company, message }),
+        headers: {
+          "Reply-To": `${name} <${email}>`,
+        },
       }),
     }
   );
 
   const payload = await response.json().catch(() => ({}));
-
   if (!response.ok || payload.success === false) {
     console.error("cloudflare email api", response.status, payload);
-    throw new Error("Email API rejected the send");
+    throw new Error("Cloudflare email API rejected the send");
   }
 }
 

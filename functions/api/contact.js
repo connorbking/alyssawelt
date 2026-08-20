@@ -1,4 +1,4 @@
-const TO_EMAIL = "alyassa@alyssawelt.com";
+const TO_EMAIL = "alyssa@alyssawelt.com";
 const FROM_EMAIL = "noreply@alyssawelt.com";
 const FROM_NAME = "Alyssa Welt Website";
 

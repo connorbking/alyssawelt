@@ -63,8 +63,8 @@ export async function onRequestPost(context) {
         },
         body: JSON.stringify({
           to,
-          from: { name: FROM_NAME, email: fromEmail },
-          headers: { "Reply-To": `${name} <${email}>` },
+          from: { name: FROM_NAME, address: fromEmail },
+          reply_to: { name, address: email },
           subject,
           text,
         }),
